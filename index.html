@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Retro Word Snake</title>
+    <title>Word Eater Snake</title>
     <style>
         :root {
             --bg-color: #0d1117;
             --canvas-bg: #161b22;
             --snake-head: #2ea44f;
-            --snake-body: #238636;
             --text-color: #c9d1d9;
             --accent-color: #58a6ff;
             --ui-bg: #21262d;
@@ -28,7 +27,7 @@
             justify-content: center;
             min-height: 100vh;
             overflow: hidden;
-            touch-action: none; /* Відключає стандартні жести прокрутки */
+            touch-action: none;
         }
 
         .header {
@@ -50,11 +49,6 @@
             color: var(--accent-color);
         }
 
-        #targetWord {
-            font-size: 1rem;
-            opacity: 0.8;
-        }
-
         .canvas-container {
             position: relative;
             box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
@@ -66,7 +60,7 @@
         canvas {
             background-color: var(--canvas-bg);
             display: block;
-            image-rendering: pixelated; /* Для чіткості на Retina екранах */
+            image-rendering: pixelated;
         }
 
         .controls {
@@ -84,11 +78,11 @@
             background: var(--ui-bg);
             color: var(--accent-color);
             border: 2px solid #30363d;
-            border-radius: 50%; /* Круглі кнопки */
+            border-radius: 50%;
             box-shadow: var(--shadow);
             cursor: pointer;
             transition: all 0.1s ease;
-            -webkit-tap-highlight-color: transparent; /* Видаляє підсвітку при тапi на iOS */
+            -webkit-tap-highlight-color: transparent;
         }
 
         button:active {
@@ -101,7 +95,6 @@
         .right { grid-column: 3; grid-row: 2; }
         .down { grid-column: 2; grid-row: 3; }
 
-        /* Оверлей закінчення гри */
         #gameOverOverlay {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -121,13 +114,12 @@
             font-size: 1rem;
             margin-top: 20px;
         }
-
     </style>
 </head>
 <body>
 
     <div class="header">
-        <div id="targetWord">Слово: <span id="currentWordState"></span></div>
+        <div id="targetWord">З'їдено артьомів:</div>
         <div id="score">0</div>
     </div>
 
@@ -149,16 +141,15 @@
 
     <script>
         // --- НАЛАШТУВАННЯ ---
-        // ЗАМІНІТЬ ЦЕ СЛОВО НА СВОЄ (тільки англійські літери або цифри)
-        const wordToEat = "PYTHON"; 
-        const gameSpeed = 140; // Менше число - швидше гра
+        // Впишіть сюди слово (бажано капсом)
+        const wordToEat = "Артьом"; 
+        const gameSpeed = 140; 
         const gridSize = 20;
         // ----------------------
 
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
         const scoreElement = document.getElementById("score");
-        const wordStateElement = document.getElementById("currentWordState");
         const overlay = document.getElementById("gameOverOverlay");
         const finalScoreElement = document.getElementById("finalScore");
 
@@ -166,25 +157,24 @@
         let snake = [];
         let dx = 0;
         let dy = 0;
-        let currentLetterIndex = 0; // Яку літеру зі слова їмо зараз
-        let food = { x: 0, y: 0 };
         let isGameOver = false;
         let gameInterval;
-        let nextDx = gridSize; // Початковий напрямок (вправо)
+        let nextDx = gridSize;
         let nextDy = 0;
 
-        // Налаштування шрифту для літер
+        // Масив для зберігання літер слова на полі
+        let wordBlocks = [];
+
         ctx.font = `bold ${gridSize - 2}px 'Courier New', monospace`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
 
         function initGame() {
             score = 0;
-            currentLetterIndex = 0;
             snake = [
-                { x: 200, y: 200 },
-                { x: 180, y: 200 },
-                { x: 160, y: 200 }
+                { x: 100, y: 200 },
+                { x: 80, y: 200 },
+                { x: 60, y: 200 }
             ];
             dx = gridSize;
             dy = 0;
@@ -193,8 +183,7 @@
             isGameOver = false;
             
             updateScoreUI();
-            updateWordUI();
-            genFood();
+            genWholeWord();
             overlay.style.display = "none";
             
             if (gameInterval) clearInterval(gameInterval);
@@ -204,7 +193,6 @@
         function gameLoop() {
             if (isGameOver) return;
 
-            // Застосовуємо новий напрямок, якщо він був змінений
             dx = nextDx;
             dy = nextDy;
 
@@ -214,13 +202,12 @@
             }
 
             clearCanvas();
-            drawFood();
+            drawWord();
             moveSnake();
             drawSnake();
         }
 
         function clearCanvas() {
-            // Малюємо сітку для стилю (опціонально)
             ctx.fillStyle = "#161b22";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
@@ -237,33 +224,28 @@
         function drawSnake() {
             snake.forEach((part, index) => {
                 const isHead = index === 0;
-                
-                // Градієнт для тіла
                 if (isHead) {
-                    ctx.fillStyle = "#2ea44f"; // Яскравіша голова
+                    ctx.fillStyle = "#2ea44f";
                 } else {
-                    // Плавне потемніння тіла до хвоста
                     const opacity = Math.max(0.4, 1 - (index / snake.length));
                     ctx.fillStyle = `rgba(35, 134, 54, ${opacity})`;
                 }
 
-                // Малюємо закруглені квадрати
                 drawRoundedRect(ctx, part.x + 1, part.y + 1, gridSize - 2, gridSize - 2, 4);
                 
-                // Додаємо очі голові
                 if (isHead) {
                     ctx.fillStyle = "#fff";
                     let eyeSize = 3;
-                    if (dx > 0) { // Дивиться вправо
+                    if (dx > 0) {
                         ctx.fillRect(part.x + gridSize - 7, part.y + 5, eyeSize, eyeSize);
                         ctx.fillRect(part.x + gridSize - 7, part.y + gridSize - 8, eyeSize, eyeSize);
-                    } else if (dx < 0) { // Вліво
+                    } else if (dx < 0) {
                         ctx.fillRect(part.x + 4, part.y + 5, eyeSize, eyeSize);
                         ctx.fillRect(part.x + 4, part.y + gridSize - 8, eyeSize, eyeSize);
-                    } else if (dy < 0) { // Вгору
+                    } else if (dy < 0) {
                         ctx.fillRect(part.x + 5, part.y + 4, eyeSize, eyeSize);
                         ctx.fillRect(part.x + gridSize - 8, part.y + 4, eyeSize, eyeSize);
-                    } else if (dy > 0) { // Вниз
+                    } else if (dy > 0) {
                         ctx.fillRect(part.x + 5, part.y + gridSize - 7, eyeSize, eyeSize);
                         ctx.fillRect(part.x + gridSize - 8, part.y + gridSize - 7, eyeSize, eyeSize);
                     }
@@ -274,7 +256,6 @@
         function moveSnake() {
             const head = { x: snake[0].x + dx, y: snake[0].y + dy };
             
-            // Проходження крізь стіни (можна вимкнути, перенісши логіку в checkCollision)
             if (head.x >= canvas.width) head.x = 0;
             else if (head.x < 0) head.x = canvas.width - gridSize;
             if (head.y >= canvas.height) head.y = 0;
@@ -282,56 +263,82 @@
 
             snake.unshift(head);
 
-            // Перевірка, чи з'їли літеру
-            if (head.x === food.x && head.y === food.y) {
-                score += 10;
-                updateScoreUI();
-                
-                // Переходимо до наступної літери
-                currentLetterIndex = (currentLetterIndex + 1) % wordToEat.length;
-                updateWordUI();
-                genFood();
+            // Перевіряємо, чи голова наступила на якусь літеру зі слова
+            let eatenBlockIndex = wordBlocks.findIndex(block => block.x === head.x && block.y === head.y);
+
+            if (eatenBlockIndex !== -1) {
+                // Видаляємо з'їдену літеру з масиву (змійка росте, бо snake.pop() не викликається)
+                wordBlocks.splice(eatenBlockIndex, 1);
+
+                // Якщо з'їли все слово повністю
+                if (wordBlocks.length === 0) {
+                    score += 1; // Додаємо 1 очко за ціле слово
+                    updateScoreUI();
+                    genWholeWord();
+                }
             } else {
+                // Якщо нічого не з'їли, змійка просто повзе
                 snake.pop();
             }
         }
 
-        function drawFood() {
-            // Малюємо яскраву літеру замість яблука
-            const currentLetter = wordToEat[currentLetterIndex];
-            
-            // Тінь (світіння) для літери
+        function drawWord() {
             ctx.shadowColor = "#58a6ff";
-            ctx.shadowBlur = 10;
-            ctx.fillStyle = "#58a6ff"; // Колір літери
+            ctx.shadowBlur = 8;
+            ctx.fillStyle = "#58a6ff";
             
-            // Малюємо літеру по центру комірки
-            ctx.fillText(currentLetter, food.x + gridSize / 2, food.y + gridSize / 2 + 1);
+            // Малюємо всі літери, які залишилися на полі
+            wordBlocks.forEach(block => {
+                ctx.fillText(block.letter, block.x + gridSize / 2, block.y + gridSize / 2 + 1);
+            });
             
-            // Скидаємо тінь, щоб не впливала на змійку
             ctx.shadowBlur = 0;
         }
 
-        function genFood() {
-            let validPosition = false;
-            while (!validPosition) {
-                food.x = Math.floor(Math.random() * (canvas.width / gridSize)) * gridSize;
-                food.y = Math.floor(Math.random() * (canvas.height / gridSize)) * gridSize;
+        function genWholeWord() {
+            let valid = false;
+            let startX, startY, isHorizontal;
+
+            while (!valid) {
+                wordBlocks = [];
+                // Випадковий вибір напрямку слова: горизонтально (true) або вертикально (false)
+                isHorizontal = Math.random() > 0.5;
                 
-                // Перевіряємо, щоб їжа не з'явилася на змійці
-                validPosition = true;
-                for (let part of snake) {
-                    if (part.x === food.x && part.y === food.y) {
-                        validPosition = false;
-                        break;
+                // Генеруємо початкову точку так, щоб слово помістилося в межах екрана
+                if (isHorizontal) {
+                    startX = Math.floor(Math.random() * ((canvas.width - (wordToEat.length * gridSize)) / gridSize)) * gridSize;
+                    startY = Math.floor(Math.random() * (canvas.height / gridSize)) * gridSize;
+                } else {
+                    startX = Math.floor(Math.random() * (canvas.width / gridSize)) * gridSize;
+                    startY = Math.floor(Math.random() * ((canvas.height - (wordToEat.length * gridSize)) / gridSize)) * gridSize;
+                }
+
+                valid = true;
+
+                // Заповнюємо масив блоків літерами та перевіряємо перетин зі змійкою
+                for (let i = 0; i < wordToEat.length; i++) {
+                    let blockX = isHorizontal ? startX + (i * gridSize) : startX;
+                    let blockY = isHorizontal ? startY : startY + (i * gridSize);
+
+                    // Перевірка накладання на змійку
+                    for (let part of snake) {
+                        if (part.x === blockX && part.y === blockY) {
+                            valid = false;
+                            break;
+                        }
                     }
+
+                    wordBlocks.push({
+                        x: blockX,
+                        y: blockY,
+                        letter: wordToEat[i]
+                    });
                 }
             }
         }
 
         function checkCollision() {
             const head = snake[0];
-            // Зіткнення із самим собою (починаємо з 1 елемента тіла, а не з голови)
             for (let i = 1; i < snake.length; i++) {
                 if (snake[i].x === head.x && snake[i].y === head.y) return true;
             }
@@ -351,7 +358,6 @@
 
         function changeDirection(newDir) {
             if (isGameOver) return;
-            // Запобігаємо розвороту на 180 градусів
             if (newDir === 'LEFT' && dx === 0) { nextDx = -gridSize; nextDy = 0; }
             if (newDir === 'UP' && dy === 0) { nextDx = 0; nextDy = -gridSize; }
             if (newDir === 'RIGHT' && dx === 0) { nextDx = gridSize; nextDy = 0; }
@@ -362,22 +368,6 @@
             scoreElement.innerText = score;
         }
 
-        function updateWordUI() {
-            // Відображаємо слово, підсвічуючи зібрану частину
-            let html = "";
-            for (let i = 0; i < wordToEat.length; i++) {
-                if (i < currentLetterIndex) {
-                    html += `<span style="color: #2ea44f; opacity: 0.5">${wordToEat[i]}</span>`; // З'їдені
-                } else if (i === currentLetterIndex) {
-                    html += `<span style="color: #58a6ff; font-weight: bold; text-decoration: underline">${wordToEat[i]}</span>`; // Поточна
-                } else {
-                    html += `<span>${wordToEat[i]}</span>`; // Майбутні
-                }
-            }
-            wordStateElement.innerHTML = html;
-        }
-
-        // Допоміжна функція для закруглених квадратів
         function drawRoundedRect(ctx, x, y, width, height, radius) {
             ctx.beginPath();
             ctx.moveTo(x + radius, y);
@@ -393,18 +383,15 @@
             ctx.fill();
         }
 
-        // Керування клавіатурою (для ПК)
         document.addEventListener('keydown', e => {
             if (e.key === 'ArrowUp') changeDirection('UP');
             else if (e.key === 'ArrowDown') changeDirection('DOWN');
             else if (e.key === 'ArrowLeft') changeDirection('LEFT');
             else if (e.key === 'ArrowRight') changeDirection('RIGHT');
-            else if (e.key === ' ' && isGameOver) resetGame(); // Пробіл для рестарту
+            else if (e.key === ' ' && isGameOver) resetGame();
         });
 
-        // Запуск гри при завантаженні
         initGame();
-
     </script>
 </body>
 </html>
