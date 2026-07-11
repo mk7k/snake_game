@@ -3,54 +3,142 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Snake Game</title>
+    <title>Retro Word Snake</title>
     <style>
+        :root {
+            --bg-color: #0d1117;
+            --canvas-bg: #161b22;
+            --snake-head: #2ea44f;
+            --snake-body: #238636;
+            --text-color: #c9d1d9;
+            --accent-color: #58a6ff;
+            --ui-bg: #21262d;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
         body {
             margin: 0;
-            background: #111;
-            color: #fff;
-            font-family: sans-serif;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100vh;
+            min-height: 100vh;
             overflow: hidden;
+            touch-action: none; /* Відключає стандартні жести прокрутки */
         }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 90vw;
+            max-width: 500px;
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            background: var(--ui-bg);
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+        }
+
+        #score {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--accent-color);
+        }
+
+        #targetWord {
+            font-size: 1rem;
+            opacity: 0.8;
+        }
+
+        .canvas-container {
+            position: relative;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 3px solid #30363d;
+        }
+
         canvas {
-            border: 2px solid #fff;
-            background: #000;
-            max-width: 90vw;
-            max-height: 50vh;
+            background-color: var(--canvas-bg);
+            display: block;
+            image-rendering: pixelated; /* Для чіткості на Retina екранах */
         }
+
         .controls {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            margin-top: 20px;
-            width: 200px;
+            gap: 15px;
+            margin-top: 25px;
+            width: 90vw;
+            max-width: 280px;
         }
+
         button {
-            padding: 15px;
-            font-size: 18px;
-            background: #333;
-            color: #fff;
-            border: 1px solid #555;
-            border-radius: 5px;
+            padding: 20px;
+            font-size: 1.5rem;
+            background: var(--ui-bg);
+            color: var(--accent-color);
+            border: 2px solid #30363d;
+            border-radius: 50%; /* Круглі кнопки */
+            box-shadow: var(--shadow);
+            cursor: pointer;
+            transition: all 0.1s ease;
+            -webkit-tap-highlight-color: transparent; /* Видаляє підсвітку при тапi на iOS */
         }
+
         button:active {
-            background: #555;
+            background: #30363d;
+            transform: scale(0.95);
         }
-        .up { grid-column: 2; }
-        .left { grid-column: 1; }
-        .right { grid-column: 3; }
-        .down { grid-column: 2; }
+
+        .up { grid-column: 2; grid-row: 1; }
+        .left { grid-column: 1; grid-row: 2; }
+        .right { grid-column: 3; grid-row: 2; }
+        .down { grid-column: 2; grid-row: 3; }
+
+        /* Оверлей закінчення гри */
+        #gameOverOverlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            z-index: 10;
+        }
+
+        #gameOverOverlay h2 { color: #f85149; font-size: 2rem; margin-bottom: 10px; }
+        #gameOverOverlay button {
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-size: 1rem;
+            margin-top: 20px;
+        }
+
     </style>
 </head>
 <body>
 
-    <div id="score">Рахунок: 0</div>
-    <canvas id="gameCanvas" width="400" height="400"></canvas>
+    <div class="header">
+        <div id="targetWord">Слово: <span id="currentWordState"></span></div>
+        <div id="score">0</div>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="gameCanvas" width="400" height="400"></canvas>
+        <div id="gameOverOverlay">
+            <h2>ГРА ЗАКІНЧЕНА</h2>
+            <div id="finalScore">Рахунок: 0</div>
+            <button onclick="resetGame()">Грати знову</button>
+        </div>
+    </div>
 
     <div class="controls">
         <button class="up" onclick="changeDirection('UP')">▲</button>
@@ -60,88 +148,263 @@
     </div>
 
     <script>
+        // --- НАЛАШТУВАННЯ ---
+        // ЗАМІНІТЬ ЦЕ СЛОВО НА СВОЄ (тільки англійські літери або цифри)
+        const wordToEat = "PYTHON"; 
+        const gameSpeed = 140; // Менше число - швидше гра
+        const gridSize = 20;
+        // ----------------------
+
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
-        const grid = 20;
+        const scoreElement = document.getElementById("score");
+        const wordStateElement = document.getElementById("currentWordState");
+        const overlay = document.getElementById("gameOverOverlay");
+        const finalScoreElement = document.getElementById("finalScore");
+
         let score = 0;
-
-        let snake = [{x: 160, y: 160}];
-        let dx = grid;
+        let snake = [];
+        let dx = 0;
         let dy = 0;
+        let currentLetterIndex = 0; // Яку літеру зі слова їмо зараз
+        let food = { x: 0, y: 0 };
+        let isGameOver = false;
+        let gameInterval;
+        let nextDx = gridSize; // Початковий напрямок (вправо)
+        let nextDy = 0;
 
-        let food = {
-            x: Math.floor(Math.random() * (canvas.width / grid)) * grid,
-            y: Math.floor(Math.random() * (canvas.height / grid)) * grid
-        };
+        // Налаштування шрифту для літер
+        ctx.font = `bold ${gridSize - 2}px 'Courier New', monospace`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
 
-        function main() {
-            if (hasGameEnded()) {
-                alert("Гра закінчена! Ваш рахунок: " + score);
-                document.location.reload();
+        function initGame() {
+            score = 0;
+            currentLetterIndex = 0;
+            snake = [
+                { x: 200, y: 200 },
+                { x: 180, y: 200 },
+                { x: 160, y: 200 }
+            ];
+            dx = gridSize;
+            dy = 0;
+            nextDx = gridSize;
+            nextDy = 0;
+            isGameOver = false;
+            
+            updateScoreUI();
+            updateWordUI();
+            genFood();
+            overlay.style.display = "none";
+            
+            if (gameInterval) clearInterval(gameInterval);
+            gameInterval = setInterval(gameLoop, gameSpeed);
+        }
+
+        function gameLoop() {
+            if (isGameOver) return;
+
+            // Застосовуємо новий напрямок, якщо він був змінений
+            dx = nextDx;
+            dy = nextDy;
+
+            if (checkCollision()) {
+                endGame();
                 return;
             }
 
-            setTimeout(function onTick() {
-                clearCanvas();
-                drawFood();
-                moveSnake();
-                drawSnake();
-                main();
-            }, 150);
+            clearCanvas();
+            drawFood();
+            moveSnake();
+            drawSnake();
         }
 
         function clearCanvas() {
-            ctx.fillStyle = "#000";
+            // Малюємо сітку для стилю (опціонально)
+            ctx.fillStyle = "#161b22";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.strokeStyle = "#1b2129";
+            ctx.lineWidth = 1;
+            for(let x = 0; x < canvas.width; x += gridSize) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+            }
+            for(let y = 0; y < canvas.height; y += gridSize) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+            }
         }
 
         function drawSnake() {
-            ctx.fillStyle = 'lightgreen';
-            snake.forEach(part => ctx.fillRect(part.x, part.y, grid - 2, grid - 2));
+            snake.forEach((part, index) => {
+                const isHead = index === 0;
+                
+                // Градієнт для тіла
+                if (isHead) {
+                    ctx.fillStyle = "#2ea44f"; // Яскравіша голова
+                } else {
+                    // Плавне потемніння тіла до хвоста
+                    const opacity = Math.max(0.4, 1 - (index / snake.length));
+                    ctx.fillStyle = `rgba(35, 134, 54, ${opacity})`;
+                }
+
+                // Малюємо закруглені квадрати
+                drawRoundedRect(ctx, part.x + 1, part.y + 1, gridSize - 2, gridSize - 2, 4);
+                
+                // Додаємо очі голові
+                if (isHead) {
+                    ctx.fillStyle = "#fff";
+                    let eyeSize = 3;
+                    if (dx > 0) { // Дивиться вправо
+                        ctx.fillRect(part.x + gridSize - 7, part.y + 5, eyeSize, eyeSize);
+                        ctx.fillRect(part.x + gridSize - 7, part.y + gridSize - 8, eyeSize, eyeSize);
+                    } else if (dx < 0) { // Вліво
+                        ctx.fillRect(part.x + 4, part.y + 5, eyeSize, eyeSize);
+                        ctx.fillRect(part.x + 4, part.y + gridSize - 8, eyeSize, eyeSize);
+                    } else if (dy < 0) { // Вгору
+                        ctx.fillRect(part.x + 5, part.y + 4, eyeSize, eyeSize);
+                        ctx.fillRect(part.x + gridSize - 8, part.y + 4, eyeSize, eyeSize);
+                    } else if (dy > 0) { // Вниз
+                        ctx.fillRect(part.x + 5, part.y + gridSize - 7, eyeSize, eyeSize);
+                        ctx.fillRect(part.x + gridSize - 8, part.y + gridSize - 7, eyeSize, eyeSize);
+                    }
+                }
+            });
         }
 
         function moveSnake() {
-            const head = {x: snake[0].x + dx, y: snake[0].y + dy};
+            const head = { x: snake[0].x + dx, y: snake[0].y + dy };
+            
+            // Проходження крізь стіни (можна вимкнути, перенісши логіку в checkCollision)
+            if (head.x >= canvas.width) head.x = 0;
+            else if (head.x < 0) head.x = canvas.width - gridSize;
+            if (head.y >= canvas.height) head.y = 0;
+            else if (head.y < 0) head.y = canvas.height - gridSize;
+
             snake.unshift(head);
 
-            if (snake[0].x === food.x && snake[0].y === food.y) {
-                score += 1;
-                document.getElementById("score").innerText = "Рахунок: " + score;
+            // Перевірка, чи з'їли літеру
+            if (head.x === food.x && head.y === food.y) {
+                score += 10;
+                updateScoreUI();
+                
+                // Переходимо до наступної літери
+                currentLetterIndex = (currentLetterIndex + 1) % wordToEat.length;
+                updateWordUI();
                 genFood();
             } else {
                 snake.pop();
             }
         }
 
-        function genFood() {
-            food.x = Math.floor(Math.random() * (canvas.width / grid)) * grid;
-            food.y = Math.floor(Math.random() * (canvas.height / grid)) * grid;
-        }
-
         function drawFood() {
-            ctx.fillStyle = 'red';
-            ctx.fillRect(food.x, food.y, grid - 2, grid - 2);
+            // Малюємо яскраву літеру замість яблука
+            const currentLetter = wordToEat[currentLetterIndex];
+            
+            // Тінь (світіння) для літери
+            ctx.shadowColor = "#58a6ff";
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = "#58a6ff"; // Колір літери
+            
+            // Малюємо літеру по центру комірки
+            ctx.fillText(currentLetter, food.x + gridSize / 2, food.y + gridSize / 2 + 1);
+            
+            // Скидаємо тінь, щоб не впливала на змійку
+            ctx.shadowBlur = 0;
         }
 
-        function changeDirection(dir) {
-            if (dir === 'LEFT' && dx === 0) { dx = -grid; dy = 0; }
-            if (dir === 'UP' && dy === 0) { dx = 0; dy = -grid; }
-            if (dir === 'RIGHT' && dx === 0) { dx = grid; dy = 0; }
-            if (dir === 'DOWN' && dy === 0) { dx = 0; dy = grid; }
-        }
-
-        function hasGameEnded() {
-            for (let i = 4; i < snake.length; i++) {
-                if (snake[i].x === snake[0].x && snake[i].y === snake[0].y) return true;
+        function genFood() {
+            let validPosition = false;
+            while (!validPosition) {
+                food.x = Math.floor(Math.random() * (canvas.width / gridSize)) * gridSize;
+                food.y = Math.floor(Math.random() * (canvas.height / gridSize)) * gridSize;
+                
+                // Перевіряємо, щоб їжа не з'явилася на змійці
+                validPosition = true;
+                for (let part of snake) {
+                    if (part.x === food.x && part.y === food.y) {
+                        validPosition = false;
+                        break;
+                    }
+                }
             }
-            const hitLeftWall = snake[0].x < 0;
-            const hitRightWall = snake[0].x >= canvas.width;
-            const hitToptWall = snake[0].y < 0;
-            const hitBottomWall = snake[0].y >= canvas.height;
-            return hitLeftWall || hitRightWall || hitToptWall || hitBottomWall;
         }
 
-        main();
+        function checkCollision() {
+            const head = snake[0];
+            // Зіткнення із самим собою (починаємо з 1 елемента тіла, а не з голови)
+            for (let i = 1; i < snake.length; i++) {
+                if (snake[i].x === head.x && snake[i].y === head.y) return true;
+            }
+            return false;
+        }
+
+        function endGame() {
+            isGameOver = true;
+            clearInterval(gameInterval);
+            finalScoreElement.innerText = "Рахунок: " + score;
+            overlay.style.display = "flex";
+        }
+
+        function resetGame() {
+            initGame();
+        }
+
+        function changeDirection(newDir) {
+            if (isGameOver) return;
+            // Запобігаємо розвороту на 180 градусів
+            if (newDir === 'LEFT' && dx === 0) { nextDx = -gridSize; nextDy = 0; }
+            if (newDir === 'UP' && dy === 0) { nextDx = 0; nextDy = -gridSize; }
+            if (newDir === 'RIGHT' && dx === 0) { nextDx = gridSize; nextDy = 0; }
+            if (newDir === 'DOWN' && dy === 0) { nextDx = 0; nextDy = gridSize; }
+        }
+
+        function updateScoreUI() {
+            scoreElement.innerText = score;
+        }
+
+        function updateWordUI() {
+            // Відображаємо слово, підсвічуючи зібрану частину
+            let html = "";
+            for (let i = 0; i < wordToEat.length; i++) {
+                if (i < currentLetterIndex) {
+                    html += `<span style="color: #2ea44f; opacity: 0.5">${wordToEat[i]}</span>`; // З'їдені
+                } else if (i === currentLetterIndex) {
+                    html += `<span style="color: #58a6ff; font-weight: bold; text-decoration: underline">${wordToEat[i]}</span>`; // Поточна
+                } else {
+                    html += `<span>${wordToEat[i]}</span>`; // Майбутні
+                }
+            }
+            wordStateElement.innerHTML = html;
+        }
+
+        // Допоміжна функція для закруглених квадратів
+        function drawRoundedRect(ctx, x, y, width, height, radius) {
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // Керування клавіатурою (для ПК)
+        document.addEventListener('keydown', e => {
+            if (e.key === 'ArrowUp') changeDirection('UP');
+            else if (e.key === 'ArrowDown') changeDirection('DOWN');
+            else if (e.key === 'ArrowLeft') changeDirection('LEFT');
+            else if (e.key === 'ArrowRight') changeDirection('RIGHT');
+            else if (e.key === ' ' && isGameOver) resetGame(); // Пробіл для рестарту
+        });
+
+        // Запуск гри при завантаженні
+        initGame();
+
     </script>
 </body>
 </html>
